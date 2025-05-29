@@ -3,9 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import "../src/Test7702.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {A, B} from "../src/Test7702.sol";
 
 contract Test7702Test is Test {
     // Alice's address and private key (EOA with no initial contract code).
