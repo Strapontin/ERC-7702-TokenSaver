@@ -1,4 +1,4 @@
-# ERC-7702-Playtesting
+# ERC-7702-TokenSaver
 
 The file [`TokenSaver.sol`](./src/TokenSaver.sol) shows an example of how smart wallet could be used to avoid any loss by front-running, or running a transaction to a malicious contract. 
 
