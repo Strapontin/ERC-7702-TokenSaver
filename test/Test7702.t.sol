@@ -3,184 +3,74 @@ pragma solidity ^0.8.20;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {Test7702} from "../src/Test7702.sol";
+import "../src/Test7702.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-
-contract MockERC20 is ERC20 {
-    constructor() ERC20("Mock Token", "MOCK") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
 
 contract Test7702Test is Test {
     // Alice's address and private key (EOA with no initial contract code).
     address payable ALICE_ADDRESS = payable(0x70997970C51812dc3A010C7d01b50e0d17dc79C8);
     uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
 
-    // Bob's address and private key (Bob will execute transactions on Alice's behalf).
-    address constant BOB_ADDRESS = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
-    uint256 constant BOB_PK = 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a;
-
     // The contract that Alice will delegate execution to.
-    Test7702 public implementation;
-
-    // ERC-20 token contract for minting test tokens.
-    MockERC20 public token;
-
-    event CallExecuted(address indexed to, uint256 value, bytes data);
-    event BatchExecuted(uint256 indexed nonce, Test7702.Call[] calls);
+    A public contractA;
+    B public contractB;
 
     function setUp() public {
-        // Deploy the delegation contract (Alice will delegate calls to this contract).
-        implementation = new Test7702();
-
-        // Deploy an ERC-20 token contract where Alice is the minter.
-        token = new MockERC20();
-
-        // Fund accounts
-        vm.deal(ALICE_ADDRESS, 10 ether);
-        token.mint(ALICE_ADDRESS, 1000e18);
+        contractA = new A();
+        contractB = new B();
     }
 
-    function testDirectExecution() public {
-        console2.log("Sending 1 ETH from Alice to Bob and transferring 100 tokens to Bob in a single transaction");
-        Test7702.Call[] memory calls = new Test7702.Call[](2);
+    function testMultipleSmartWallets() public {
+        vm.signAndAttachDelegation(address(contractA), ALICE_PK);
+        A(ALICE_ADDRESS).setA(1);
+        vm.signAndAttachDelegation(address(contractB), ALICE_PK);
+        B(ALICE_ADDRESS).setB(2);
 
-        // ETH transfer
-        calls[0] = Test7702.Call({to: BOB_ADDRESS, value: 1 ether, data: ""});
+        console2.log("_a:", B(ALICE_ADDRESS)._a());
+        console2.log("b:", B(ALICE_ADDRESS).b());
 
-        // Token transfer
-        calls[1] = Test7702.Call({
-            to: address(token),
-            value: 0,
-            data: abi.encodeCall(ERC20.transfer, (BOB_ADDRESS, 100e18))
-        });
+        // OUTPUT:
+        // _a: 1
+        // b: 2
 
-        vm.signAndAttachDelegation(address(implementation), ALICE_PK);
-
-        vm.startPrank(ALICE_ADDRESS);
-        Test7702(ALICE_ADDRESS).execute(calls);
-        vm.stopPrank();
-
-        assertEq(BOB_ADDRESS.balance, 1 ether);
-        assertEq(token.balanceOf(BOB_ADDRESS), 100e18);
+        // Conclusion: It's possible to create a new smart wallet while the previous wallet is still active.
+        // Storage is NOT reset
     }
 
-    function testSponsoredExecution() public {
-        console2.log("Sending 1 ETH from Alice to a random address while the transaction is sponsored by Bob");
+    // Test write to 1st contract after setting the 2nd
+    function testMultipleSmartWalletsActive() public {
+        vm.signAndAttachDelegation(address(contractA), ALICE_PK);
+        vm.signAndAttachDelegation(address(contractB), ALICE_PK);
+        A(ALICE_ADDRESS).setA(1);
+        B(ALICE_ADDRESS).setB(2);
 
-        Test7702.Call[] memory calls = new Test7702.Call[](1);
-        address recipient = makeAddr("recipient");
+        console2.log("_a:", B(ALICE_ADDRESS)._a());
+        console2.log("b:", B(ALICE_ADDRESS).b());
 
-        calls[0] = Test7702.Call({to: recipient, value: 1 ether, data: ""});
+        // OUTPUT:
+        // _a: 0
+        // b: 2
 
-        // Alice signs a delegation allowing `implementation` to execute transactions on her behalf.
-        Vm.SignedDelegation memory signedDelegation = vm.signDelegation(address(implementation), ALICE_PK);
-
-        // Bob attaches the signed delegation from Alice and broadcasts it.
-        vm.startBroadcast(BOB_PK);
-        vm.attachDelegation(signedDelegation);
-
-        // Verify that Alice's account now temporarily behaves as a smart contract.
-        bytes memory code = address(ALICE_ADDRESS).code;
-        require(code.length > 0, "no code written to Alice");
-        // console2.log("Code on Alice's account:", vm.toString(code));
-
-        // Debug nonce
-        // console2.log("Nonce before sending transaction:", Test7702(ALICE_ADDRESS).nonce());
-
-        bytes memory encodedCalls = "";
-        for (uint256 i = 0; i < calls.length; i++) {
-            encodedCalls = abi.encodePacked(encodedCalls, calls[i].to, calls[i].value, calls[i].data);
-        }
-
-        bytes32 digest = keccak256(abi.encodePacked(Test7702(ALICE_ADDRESS).nonce(), encodedCalls));
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, MessageHashUtils.toEthSignedMessageHash(digest));
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        // Expect the event. The first parameter should be BOB_ADDRESS.
-        vm.expectEmit(true, true, true, true);
-        emit Test7702.CallExecuted(BOB_ADDRESS, calls[0].to, calls[0].value, calls[0].data);
-
-        // As Bob, execute the transaction via Alice's temporarily assigned contract.
-        Test7702(ALICE_ADDRESS).execute(calls, signature);
-
-        // console2.log("Nonce after sending transaction:", Test7702(ALICE_ADDRESS).nonce());
-
-        vm.stopBroadcast();
-
-        assertEq(recipient.balance, 1 ether);
+        // Conclusion: Multiple contracts can't be active AT THE SAME TIME.
+        // Setting a new smart wallet overwrites the function of the previous contract
     }
 
-    function testWrongSignature() public {
-        console2.log("Test wrong signature: Execution should revert with 'Invalid signature'.");
-        Test7702.Call[] memory calls = new Test7702.Call[](1);
-        calls[0] = Test7702.Call({
-            to: address(token),
-            value: 0,
-            data: abi.encodeCall(MockERC20.mint, (BOB_ADDRESS, 50))
-        });
+    // Set the first contract off, then retry to fetch the storage to see if it's still kept
+    function testStorageIsKeptWhenSettingContractOff() public {
+        vm.signAndAttachDelegation(address(contractA), ALICE_PK);
+        A(ALICE_ADDRESS).setA(1);
+        vm.signAndAttachDelegation(address(0), ALICE_PK);
+        vm.signAndAttachDelegation(address(contractB), ALICE_PK);
+        B(ALICE_ADDRESS).setB(2);
 
-        // Build the encoded call data.
-        bytes memory encodedCalls = "";
-        for (uint256 i = 0; i < calls.length; i++) {
-            encodedCalls = abi.encodePacked(encodedCalls, calls[i].to, calls[i].value, calls[i].data);
-        }
+        console2.log("_a:", B(ALICE_ADDRESS)._a());
+        console2.log("b:", B(ALICE_ADDRESS).b());
 
-        // Alice signs a delegation allowing `implementation` to execute transactions on her behalf.
-        Vm.SignedDelegation memory signedDelegation = vm.signDelegation(address(implementation), ALICE_PK);
+        // OUTPUT:
+        // _a: 1
+        // b: 2
 
-        // Bob attaches the signed delegation from Alice and broadcasts it.
-        vm.startBroadcast(BOB_PK);
-        vm.attachDelegation(signedDelegation);
-
-        bytes32 digest = keccak256(abi.encodePacked(Test7702(ALICE_ADDRESS).nonce(), encodedCalls));
-        // Sign with the wrong key (Bob's instead of Alice's).
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOB_PK, MessageHashUtils.toEthSignedMessageHash(digest));
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        vm.expectRevert("Invalid signature");
-        Test7702(ALICE_ADDRESS).execute(calls, signature);
-        vm.stopBroadcast();
-    }
-
-    function testReplayAttack() public {
-        console2.log("Test replay attack: Reusing the same signature should revert.");
-        Test7702.Call[] memory calls = new Test7702.Call[](1);
-        calls[0] = Test7702.Call({
-            to: address(token),
-            value: 0,
-            data: abi.encodeCall(MockERC20.mint, (BOB_ADDRESS, 30))
-        });
-
-        // Build encoded call data.
-        bytes memory encodedCalls = "";
-        for (uint256 i = 0; i < calls.length; i++) {
-            encodedCalls = abi.encodePacked(encodedCalls, calls[i].to, calls[i].value, calls[i].data);
-        }
-
-        // Alice signs a delegation allowing `implementation` to execute transactions on her behalf.
-        Vm.SignedDelegation memory signedDelegation = vm.signDelegation(address(implementation), ALICE_PK);
-
-        // Bob attaches the signed delegation from Alice and broadcasts it.
-        vm.startBroadcast(BOB_PK);
-        vm.attachDelegation(signedDelegation);
-
-        uint256 nonceBefore = Test7702(ALICE_ADDRESS).nonce();
-        bytes32 digest = keccak256(abi.encodePacked(nonceBefore, encodedCalls));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, MessageHashUtils.toEthSignedMessageHash(digest));
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        // First execution: should succeed.
-        Test7702(ALICE_ADDRESS).execute(calls, signature);
-        vm.stopBroadcast();
-
-        // Attempt a replay: reusing the same signature should revert because nonce has incremented.
-        vm.expectRevert("Invalid signature");
-        Test7702(ALICE_ADDRESS).execute(calls, signature);
+        // Conclusion: Storage is kept even when we remove delegation before setting it to another contract
     }
 }
