@@ -21,7 +21,7 @@ contract TokenSaver {
 
     TokenTracked[] tokenTracked;
 
-    modifier requireEOA() {
+    modifier owner() {
         require(msg.sender == address(this), "Not account owner");
         _;
     }
@@ -34,7 +34,7 @@ contract TokenSaver {
      * @param _token The address of the token to track. Use address(0) for native token.
      * @param _minAmount The minimum amount of the token to maintain.
      */
-    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external requireEOA {
+    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external owner {
         // Update the token if found
         for (uint256 i = 0; i < tokenTracked.length; i++) {
             if (tokenTracked[i].token == _token) {
@@ -50,7 +50,7 @@ contract TokenSaver {
      * @notice Removes a token from the tracking list.
      * @param _token The address of the token to remove. Use address(0) for native token.
      */
-    function removeToken(address _token) external requireEOA {
+    function removeToken(address _token) external owner {
         uint256 listLength = tokenTracked.length;
 
         for (uint256 i = 0; i < listLength; i++) {
@@ -67,7 +67,7 @@ contract TokenSaver {
      * @dev Reverts if any token balance falls below the specified minimum amount.
      * @param calls An array of Call structs containing the details of each call to execute.
      */
-    function execute(Call[] calldata calls) external requireEOA {
+    function execute(Call[] calldata calls) external owner {
         TokenTracked[] memory _tokenTracked = new TokenTracked[](tokenTracked.length);
 
         // Checks the value of tokens with minAmount == uint.max
@@ -82,7 +82,7 @@ contract TokenSaver {
         // Execute calls
         for (uint256 i = 0; i < calls.length; i++) {
             (bool success,) = calls[i].to.call{value: calls[i].value}(calls[i].data);
-            require(success, "Call reverted");
+                (success, "Call reverted");
         }
 
         // Revert if balances are not as expected
