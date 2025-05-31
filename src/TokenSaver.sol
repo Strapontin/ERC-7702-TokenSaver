@@ -90,7 +90,7 @@ contract TokenSaver {
             uint256 value = _getTokenValue(_tokenTracked[i].token);
 
             if (value < _tokenTracked[i].minAmount) {
-                revert BalanceBelowMinimum(_tokenTracked[i].token, _tokenTracked[i].minAmount, value);
+                revert BalanceBelowMinimum(_tokenTracked[i].token, tokenTracked[i].minAmount, value);
             }
         }
     }

@@ -49,7 +49,9 @@ contract Test7702Test is Test {
         calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.transfer, (bob, 1))});
 
         // Execute the transfer. It fails since alice's balance is now under the minimum amount she requested
-        vm.expectPartialRevert(TokenSaver.BalanceBelowMinimum.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(TokenSaver.BalanceBelowMinimum.selector, address(DAI), 100e18, 100e18 - 1)
+        );
         TokenSaver(alice).execute(calls);
 
         vm.stopPrank();
@@ -67,7 +69,9 @@ contract Test7702Test is Test {
         calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.transfer, (bob, 1))});
 
         // Execute the transfer. It fails since alice's balance is now under the minimum amount she requested
-        vm.expectPartialRevert(TokenSaver.BalanceBelowMinimum.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(TokenSaver.BalanceBelowMinimum.selector, address(DAI), type(uint256).max, 100e18 - 1)
+        );
         TokenSaver(alice).execute(calls);
 
         calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(Token.mint, (alice, 1e18))});
@@ -75,6 +79,29 @@ contract Test7702Test is Test {
         TokenSaver(alice).execute(calls);
 
         assertEq(DAI.balanceOf(alice), 101e18);
+
+        vm.stopPrank();
+    }
+
+    function test_usingNativeToken() public {
+        vm.deal(alice, 2 ether);
+        vm.signAndAttachDelegation(address(tokenSaver), ALICE_PK);
+
+        vm.startPrank(alice);
+
+        // Address(0) is native token
+        TokenSaver(alice).addOrUpdateTokenTracked(address(0), 1 ether);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        calls[0] = TokenSaver.Call({to: address(bob), value: 1 ether, data: ""});
+
+        TokenSaver(alice).execute(calls);
+
+        assertEq(alice.balance, 1 ether);
+        assertEq(bob.balance, 1 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.BalanceBelowMinimum.selector, 0, 1 ether, 0));
+        TokenSaver(alice).execute(calls);
 
         vm.stopPrank();
     }
