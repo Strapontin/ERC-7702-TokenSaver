@@ -21,8 +21,8 @@ contract TokenSaver {
 
     TokenTracked[] tokenTracked;
 
-    modifier owner() {
-        require(msg.sender == address(this), "Not account owner");
+    modifier onlyOwner() {
+        require(msg.sender == address(this), "Not account onlyOwner");
         _;
     }
 
@@ -34,7 +34,7 @@ contract TokenSaver {
      * @param _token The address of the token to track. Use address(0) for native token.
      * @param _minAmount The minimum amount of the token to maintain.
      */
-    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external owner {
+    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external onlyOwner {
         // Update the token if found
         for (uint256 i = 0; i < tokenTracked.length; i++) {
             if (tokenTracked[i].token == _token) {
@@ -50,7 +50,7 @@ contract TokenSaver {
      * @notice Removes a token from the tracking list.
      * @param _token The address of the token to remove. Use address(0) for native token.
      */
-    function removeToken(address _token) external owner {
+    function removeToken(address _token) external onlyOwner {
         uint256 listLength = tokenTracked.length;
 
         for (uint256 i = 0; i < listLength; i++) {
@@ -67,7 +67,7 @@ contract TokenSaver {
      * @dev Reverts if any token balance falls below the specified minimum amount.
      * @param calls An array of Call structs containing the details of each call to execute.
      */
-    function execute(Call[] calldata calls) external owner {
+    function execute(Call[] calldata calls) external onlyOwner {
         TokenTracked[] memory _tokenTracked = new TokenTracked[](tokenTracked.length);
 
         // Checks the value of tokens with minAmount == uint.max
@@ -101,7 +101,7 @@ contract TokenSaver {
      * @return The balance of the specified token.
      */
     function _getTokenValue(address tokenAddress) private view returns (uint256) {
-        if (tokenAddress == address(0)) {
+        if (tokenAddress == address(0)) { 
             return address(this).balance;
         }
 
