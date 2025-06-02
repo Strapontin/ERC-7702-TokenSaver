@@ -43,7 +43,7 @@ contract ExampleScenarios is Test {
      */
     function test_preventsSpoofingAttack() public {
         (address victim, uint256 victimPK) = makeAddrAndKey("victim");
-        
+
         uint256 victimsBalance = 143.45 ether;
         vm.deal(victim, victimsBalance);
 
