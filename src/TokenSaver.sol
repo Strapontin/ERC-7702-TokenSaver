@@ -49,7 +49,7 @@ contract TokenSaver is ReentrancyGuard {
      * @notice Adds or updates a token to be tracked with a specified minimum amount.
      * @dev If the token already exists in the tracking list, its minimum amount is updated.
      * @param _token The address of the token to track. Use address(0) for native token.
-     * @param _minAmount The minimum amount of the token to maintain.
+     * @param _minAmount The minimum amount of the token to maintain. Use `type(uint256).max` if you expect the value to NEVER decrease.
      */
     function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external onlyEOA nonReentrant {
         // Update the token if found

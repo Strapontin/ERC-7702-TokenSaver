@@ -1,8 +1,10 @@
 # ERC-7702-TokenSaver
 
-The file [`TokenSaver.sol`](./src/TokenSaver.sol) shows an example of how smart wallet could be used to avoid any loss by front-running, or running a transaction to a malicious contract. 
+The contract [`TokenSaver`](./src/TokenSaver.sol) shows an example of how smart wallet could be used to avoid any loss by front-running, or running a transaction to a malicious contract. 
 
 I was inspired to create this after reading about this attack: https://drops.scamsniffer.io/transaction-simulation-spoofing-a-new-threat-in-web3/
+
+More information in the [documentation](./DOC.md).
 
 ## Foundry
 
