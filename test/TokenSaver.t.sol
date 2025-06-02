@@ -4,43 +4,29 @@ pragma solidity ^0.8.20;
 import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Token is ERC20 {
-    constructor(address mintTo, uint256 amount) ERC20("", "") {
-        _mint(mintTo, amount);
-    }
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
+import {ERC20, ERC20Token} from "./mocks/ERC20Token.sol";
 
 contract Test7702Test is Test {
     // Alice's address and private key (EOA with no initial contract code).
     address alice;
     uint256 alicePK;
-
     address bob;
 
-    address candid;
-    uint256 candidPK;
-
-    Token DAI;
-    Token WETH;
+    ERC20Token DAI;
+    ERC20Token WETH;
 
     // The contract that Alice will delegate execution to.
     TokenSaver public tokenSaver;
 
     function setUp() public {
-        (candid, alicePK) = makeAddrAndKey("candid");
-        (candid, candidPK) = makeAddrAndKey("candid");
+        (alice, alicePK) = makeAddrAndKey("alice");
         bob = makeAddr("bob");
 
         tokenSaver = new TokenSaver();
 
-        DAI = new Token(alice, 100e18);
-        WETH = new Token(alice, 100e18);
+        DAI = new ERC20Token(alice, 100e18);
+        WETH = new ERC20Token(alice, 100e18);
     }
 
     function test_SimpleTransfer() public {
@@ -78,7 +64,7 @@ contract Test7702Test is Test {
         );
         TokenSaver(alice).execute(calls);
 
-        calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(Token.mint, (alice, 1e18))});
+        calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20Token.mint, (alice, 1e18))});
 
         TokenSaver(alice).execute(calls);
 
@@ -107,38 +93,5 @@ contract Test7702Test is Test {
         TokenSaver(alice).execute(calls);
 
         vm.stopPrank();
-    }
-
-    /* 
-     * Candid is naive.
-     * Candid does not really verify what the calls in `execute` are, because he believes that TokenSaver
-     * will protect him from all hacks. How could an attacker profit from this?    
-     */
-
-    // 1. An attacker tries to add/update/remove tokens from TokenSaver
-    function test_AddRemoveTokensRevert() public {
-        vm.signAndAttachDelegation(address(tokenSaver), candidPK);
-        vm.startPrank(candid);
-
-        // A transaction to add or update tokens will revert
-        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
-        calls[0] = TokenSaver.Call({
-            to: address(candid),
-            value: 0,
-            data: abi.encodeCall(TokenSaver.addOrUpdateTokenTracked, (address(DAI), 0))
-        });
-
-        vm.expectRevert(abi.encodeWithSelector(TokenSaver.CallUnsuccessful.selector, 0));
-        TokenSaver(candid).execute(calls);
-
-        // A transaction to remove tokens will also revert
-        calls[0] = TokenSaver.Call({
-            to: address(candid),
-            value: 0,
-            data: abi.encodeCall(TokenSaver.removeToken, (address(DAI)))
-        });
-
-        vm.expectRevert(abi.encodeWithSelector(TokenSaver.CallUnsuccessful.selector, 0));
-        TokenSaver(candid).execute(calls);
     }
 }

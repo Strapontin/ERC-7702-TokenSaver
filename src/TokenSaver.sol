@@ -14,11 +14,19 @@ contract TokenSaver is ReentrancyGuard {
         uint256 minAmount; // If == uint.max, then we should check that the amount does not decrease
     }
 
+    struct AllowancesTracked {
+        address token;
+        address spender;
+        uint256 amount;
+    }
+
     struct Call {
         address to;
         uint256 value;
         bytes data;
     }
+
+    bytes4 public constant APPROVE_SELECTOR = bytes4(keccak256("approve(address,uint256)"));
 
     TokenTracked[] tokenTracked;
 
@@ -30,8 +38,9 @@ contract TokenSaver is ReentrancyGuard {
     }
 
     error BalanceBelowMinimum(address token, uint256 minAmount, uint256 actualAmount);
+    error AllowanceAboveBeforeTransaction(address token, address spender, uint256 amountBefore, uint256 amountAfter);
     error NotSmartWalletEOA(address sender, address eoa);
-    error CallUnsuccessful(uint callIndex);
+    error CallUnsuccessful(uint256 callIndex);
 
     /**
      * @notice Adds or updates a token to be tracked with a specified minimum amount.
@@ -74,6 +83,8 @@ contract TokenSaver is ReentrancyGuard {
      */
     function execute(Call[] calldata calls) external onlyEOA nonReentrant {
         TokenTracked[] memory _tokenTracked = new TokenTracked[](tokenTracked.length);
+        AllowancesTracked[] memory _allowanceTracked = new AllowancesTracked[](tokenTracked.length);
+        uint256 allowanceLength;
 
         // Checks the value of tokens with minAmount == uint.max
         for (uint256 i = 0; i < tokenTracked.length; i++) {
@@ -86,11 +97,32 @@ contract TokenSaver is ReentrancyGuard {
 
         // Execute calls
         for (uint256 i = 0; i < calls.length; i++) {
-            (bool success,) = calls[i].to.call{value: calls[i].value}(calls[i].data);
+            // If the call is `ERC20::approve()`, save its data
+            bytes calldata data = calls[i].data;
+            bytes4 selector;
+            assembly {
+                selector := calldataload(data.offset)
+            }
+            // If we are trying to call `approve` for a tracked token, we save the previous value for comparison
+            if (selector == APPROVE_SELECTOR && _isTokenTracked(calls[i].to)) {
+                (address spender,) = abi.decode(data[4:], (address, uint256));
+
+                if (!_isTokenAllowanceAlreadyTracked(_allowanceTracked, calls[i].to, spender, allowanceLength)) {
+                    _allowanceTracked[allowanceLength].token = calls[i].to;
+                    _allowanceTracked[allowanceLength].spender = spender;
+                    _allowanceTracked[allowanceLength].amount =
+                        IERC20(_allowanceTracked[i].token).allowance(address(this), _allowanceTracked[i].spender);
+
+                    allowanceLength++;
+                }
+            }
+
+            // Call execution
+            (bool success,) = calls[i].to.call{value: calls[i].value}(data);
             if (!success) revert CallUnsuccessful(i);
         }
 
-        // Revert if balances are not as expected
+        // Revert if balances are lower than expected
         for (uint256 i = 0; i < _tokenTracked.length; i++) {
             uint256 value = _getTokenValue(_tokenTracked[i].token);
 
@@ -98,6 +130,50 @@ contract TokenSaver is ReentrancyGuard {
                 revert BalanceBelowMinimum(_tokenTracked[i].token, tokenTracked[i].minAmount, value);
             }
         }
+
+        // Revert if allowances are higher than expected
+        for (uint256 i = 0; i < allowanceLength; i++) {
+            uint256 newAllowance =
+                IERC20(_allowanceTracked[i].token).allowance(address(this), _allowanceTracked[i].spender);
+
+            if (newAllowance > _allowanceTracked[i].amount) {
+                revert AllowanceAboveBeforeTransaction(
+                    _allowanceTracked[i].token, _allowanceTracked[i].spender, _allowanceTracked[i].amount, newAllowance
+                );
+            }
+        }
+    }
+
+    /**
+     * @notice Checks if a specific token is being tracked.
+     * @param token The address of the token to check.
+     * @return bool Returns `true` if the token is being tracked, otherwise `false`.
+     */
+    function _isTokenTracked(address token) private view returns (bool) {
+        for (uint256 i = 0; i < tokenTracked.length; i++) {
+            if (tokenTracked[i].token == token) return true;
+        }
+        return false;
+    }
+
+    /**
+     * @dev Checks if a specific token allowance is already being tracked.
+     * @param _allowanceTracked An array of `AllowancesTracked` structs representing the tracked allowances.
+     * @param token The address of the token to check.
+     * @param spender The address of the spender to check.
+     * @param allowanceLength The number of tracked allowances in the `_allowanceTracked` array.
+     * @return bool Returns `true` if the token allowance is already being tracked, otherwise `false`.
+     */
+    function _isTokenAllowanceAlreadyTracked(
+        AllowancesTracked[] memory _allowanceTracked,
+        address token,
+        address spender,
+        uint256 allowanceLength
+    ) private pure returns (bool) {
+        for (uint256 i = 0; i < allowanceLength; i++) {
+            if (_allowanceTracked[i].token == token && _allowanceTracked[i].spender == spender) return true;
+        }
+        return false;
     }
 
     /**
