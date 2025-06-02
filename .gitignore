@@ -11,3 +11,5 @@ lib/
 out/
 cache/
 keystore/
+
+pk.txt
