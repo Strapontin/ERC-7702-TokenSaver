@@ -80,6 +80,14 @@ contract TokenSaver is ReentrancyGuard {
     }
 
     /**
+     * @notice Removes all tracked tokens.
+     * @dev Useful for clearing token tracking state when migrating from a previous smart wallet
+     */
+    function deleteAllTokenTracked() external onlyEOA nonReentrant {
+        delete tokenTracked;
+    }
+
+    /**
      * @notice Sets the value of the variable `revertOnPermit`. When set to true, any function
      * selector that matches the permit selector when calling `execute` will revert.
      * @param value The value to set the variable `revertOnPermit` to.

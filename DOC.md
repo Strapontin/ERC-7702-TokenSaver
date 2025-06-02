@@ -26,6 +26,8 @@ If you don't want to track a token anymore, you are advised to remove it from th
 
 _Note: This will NOT revert if the token is not in the list_
 
+Alternatively, you can use `deleteAllTokenTracked` to clear the array. This is particulary useful when migrating from another smart wallet, where this storage was used by another array.
+
 ## Setting `revertOnPermit`
 
 If you want to avoid the `permit` vulnerability, you can call `setRevertOnPermit(true)`. This will allow `execute` to revert everytime it encounters a call with a [`ERC20Permit::permit` selector](https://www.4byte.directory/signatures/?bytes4_signature=0xd505accf).
