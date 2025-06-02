@@ -5,6 +5,7 @@ import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
 
+import {MaliciousContract} from "./mocks/MaliciousContract.sol";
 import {Staking} from "./mocks/Staking.sol";
 import {ERC20, ERC20Permit, ERC20Token} from "./mocks/ERC20Token.sol";
 
@@ -18,6 +19,7 @@ contract ExampleScenarios is Test {
     ERC20Token WETH;
 
     Staking stakingContract;
+    MaliciousContract maliciousContract;
 
     // The contract that Alice will delegate execution to.
     TokenSaver public tokenSaver;
@@ -32,12 +34,51 @@ contract ExampleScenarios is Test {
         WETH = new ERC20Token(candid, 100e18);
 
         stakingContract = new Staking();
+        maliciousContract = new MaliciousContract();
     }
 
-    /* 
+    /**
+     * The following test shows how the hack that inspired me for this project could have been avoided.
+     * You can read about it here: http://drops.scamsniffer.io/transaction-simulation-spoofing-a-new-threat-in-web3/
+     */
+    function test_preventsSpoofingAttack() public {
+        (address victim, uint256 victimPK) = makeAddrAndKey("victim");
+        
+        uint256 victimsBalance = 143.45 ether;
+        vm.deal(victim, victimsBalance);
+
+        // Our user simulates their transaction off-chain, and it looks correct.
+        // This is because maliciousContract sends back the ether given to it.
+
+        /* Around here, the attacker alters the malicious contract in order for it to not return the ether send */
+
+        // Our victim is *clever* and chooses to use TokenSaver to protect their funds
+        vm.signAndAttachDelegation(address(tokenSaver), victimPK);
+        vm.startPrank(victim);
+
+        // They set their smart wallet to revert if it has less than 143.45 ether
+        TokenSaver(victim).addOrUpdateTokenTracked(address(0), victimsBalance);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+
+        // Calls the malicious contract with the balance amount as value
+        calls[0] = TokenSaver.Call({
+            to: address(maliciousContract),
+            value: victimsBalance,
+            data: abi.encodeCall(MaliciousContract.claim, ())
+        });
+
+        // The call should revert
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.BalanceBelowMinimum.selector, address(0), victimsBalance, 0));
+        TokenSaver(victim).execute(calls);
+
+        // Hurray ! Funds are safe !
+    }
+
+    /**
      * Candid is naive.
      * Candid does not really verify what the calls in `execute` are, because he believes that TokenSaver
-     * will protect him from all hacks. How could an attacker profit from this?    
+     * will protect him from all hacks. How could an attacker profit from this?
      */
 
     // 1. An attacker tries to add/update/remove tokens from TokenSaver
