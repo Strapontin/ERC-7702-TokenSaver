@@ -18,8 +18,13 @@ contract Token is ERC20 {
 
 contract Test7702Test is Test {
     // Alice's address and private key (EOA with no initial contract code).
-    address payable alice = payable(0x70997970C51812dc3A010C7d01b50e0d17dc79C8);
-    uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+    address alice;
+    uint256 alicePK;
+
+    address bob;
+
+    address candid;
+    uint256 candidPK;
 
     Token DAI;
     Token WETH;
@@ -27,10 +32,11 @@ contract Test7702Test is Test {
     // The contract that Alice will delegate execution to.
     TokenSaver public tokenSaver;
 
-    address bob;
-
     function setUp() public {
+        (candid, alicePK) = makeAddrAndKey("candid");
+        (candid, candidPK) = makeAddrAndKey("candid");
         bob = makeAddr("bob");
+
         tokenSaver = new TokenSaver();
 
         DAI = new Token(alice, 100e18);
@@ -38,8 +44,7 @@ contract Test7702Test is Test {
     }
 
     function test_SimpleTransfer() public {
-        vm.signAndAttachDelegation(address(tokenSaver), ALICE_PK);
-
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
         vm.startPrank(alice);
 
         // Add DAI token to the list of tracked tokens
@@ -58,8 +63,7 @@ contract Test7702Test is Test {
     }
 
     function test_setUintMaxShouldAllowToReceiveTokenButNotLoosingAny() public {
-        vm.signAndAttachDelegation(address(tokenSaver), ALICE_PK);
-
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
         vm.startPrank(alice);
 
         // Add DAI token to the list of tracked tokens
@@ -85,8 +89,7 @@ contract Test7702Test is Test {
 
     function test_usingNativeToken() public {
         vm.deal(alice, 2 ether);
-        vm.signAndAttachDelegation(address(tokenSaver), ALICE_PK);
-
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
         vm.startPrank(alice);
 
         // Address(0) is native token
@@ -104,5 +107,38 @@ contract Test7702Test is Test {
         TokenSaver(alice).execute(calls);
 
         vm.stopPrank();
+    }
+
+    /* 
+     * Candid is naive.
+     * Candid does not really verify what the calls in `execute` are, because he believes that TokenSaver
+     * will protect him from all hacks. How could an attacker profit from this?    
+     */
+
+    // 1. An attacker tries to add/update/remove tokens from TokenSaver
+    function test_AddRemoveTokensRevert() public {
+        vm.signAndAttachDelegation(address(tokenSaver), candidPK);
+        vm.startPrank(candid);
+
+        // A transaction to add or update tokens will revert
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        calls[0] = TokenSaver.Call({
+            to: address(candid),
+            value: 0,
+            data: abi.encodeCall(TokenSaver.addOrUpdateTokenTracked, (address(DAI), 0))
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.CallUnsuccessful.selector, 0));
+        TokenSaver(candid).execute(calls);
+
+        // A transaction to remove tokens will also revert
+        calls[0] = TokenSaver.Call({
+            to: address(candid),
+            value: 0,
+            data: abi.encodeCall(TokenSaver.removeToken, (address(DAI)))
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.CallUnsuccessful.selector, 0));
+        TokenSaver(candid).execute(calls);
     }
 }

@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import "forge-std/console2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract TokenSaver {
+contract TokenSaver is ReentrancyGuard {
     // Purposes: have a list of tokens to track.
     // These tracked tokens should not see the balance of this address below the min amount.
 
@@ -30,6 +31,7 @@ contract TokenSaver {
 
     error BalanceBelowMinimum(address token, uint256 minAmount, uint256 actualAmount);
     error NotSmartWalletEOA(address sender, address eoa);
+    error CallUnsuccessful(uint callIndex);
 
     /**
      * @notice Adds or updates a token to be tracked with a specified minimum amount.
@@ -37,7 +39,7 @@ contract TokenSaver {
      * @param _token The address of the token to track. Use address(0) for native token.
      * @param _minAmount The minimum amount of the token to maintain.
      */
-    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external onlyEOA {
+    function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external onlyEOA nonReentrant {
         // Update the token if found
         for (uint256 i = 0; i < tokenTracked.length; i++) {
             if (tokenTracked[i].token == _token) {
@@ -53,7 +55,7 @@ contract TokenSaver {
      * @notice Removes a token from the tracking list.
      * @param _token The address of the token to remove. Use address(0) for native token.
      */
-    function removeToken(address _token) external onlyEOA {
+    function removeToken(address _token) external onlyEOA nonReentrant {
         uint256 listLength = tokenTracked.length;
 
         for (uint256 i = 0; i < listLength; i++) {
@@ -70,7 +72,7 @@ contract TokenSaver {
      * @dev Reverts if any token balance falls below the specified minimum amount.
      * @param calls An array of Call structs containing the details of each call to execute.
      */
-    function execute(Call[] calldata calls) external onlyEOA {
+    function execute(Call[] calldata calls) external onlyEOA nonReentrant {
         TokenTracked[] memory _tokenTracked = new TokenTracked[](tokenTracked.length);
 
         // Checks the value of tokens with minAmount == uint.max
@@ -85,7 +87,7 @@ contract TokenSaver {
         // Execute calls
         for (uint256 i = 0; i < calls.length; i++) {
             (bool success,) = calls[i].to.call{value: calls[i].value}(calls[i].data);
-            require(success, "Call reverted");
+            if (!success) revert CallUnsuccessful(i);
         }
 
         // Revert if balances are not as expected
