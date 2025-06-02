@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "forge-std/console2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract TokenSaver is ReentrancyGuard {
     // Purposes: have a list of tokens to track.
@@ -26,9 +26,11 @@ contract TokenSaver is ReentrancyGuard {
         bytes data;
     }
 
-    bytes4 public constant APPROVE_SELECTOR = bytes4(keccak256("approve(address,uint256)"));
+    bytes4 public constant APPROVE_SELECTOR = IERC20.approve.selector;
+    bytes4 public constant PERMIT_SELECTOR = ERC20Permit.permit.selector;
 
     TokenTracked[] tokenTracked;
+    bool revertOnPermit;
 
     modifier onlyEOA() {
         if (msg.sender != address(this)) {
@@ -41,6 +43,7 @@ contract TokenSaver is ReentrancyGuard {
     error AllowanceAboveBeforeTransaction(address token, address spender, uint256 amountBefore, uint256 amountAfter);
     error NotSmartWalletEOA(address sender, address eoa);
     error CallUnsuccessful(uint256 callIndex);
+    error PermitIsNotAuthorized();
 
     /**
      * @notice Adds or updates a token to be tracked with a specified minimum amount.
@@ -74,6 +77,15 @@ contract TokenSaver is ReentrancyGuard {
                 return;
             }
         }
+    }
+
+    /**
+     * @notice Sets the value of the variable `revertOnPermit`. When set to true, any function
+     * selector that matches the permit selector when calling `execute` will revert.
+     * @param value The value to set the variable `revertOnPermit` to.
+     */
+    function setRevertOnPermit(bool value) external onlyEOA nonReentrant {
+        revertOnPermit = value;
     }
 
     /**
@@ -115,6 +127,11 @@ contract TokenSaver is ReentrancyGuard {
 
                     allowanceLength++;
                 }
+            }
+
+            // If we are trying to call `permit` for a tracked token and `revertOnPermit` is set to true
+            if (selector == PERMIT_SELECTOR && _isTokenTracked(calls[i].to) && revertOnPermit) {
+                revert PermitIsNotAuthorized();
             }
 
             // Call execution

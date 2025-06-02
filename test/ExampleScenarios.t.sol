@@ -6,9 +6,9 @@ import {Vm} from "forge-std/Vm.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
 
 import {Staking} from "./mocks/Staking.sol";
-import {ERC20, ERC20Token} from "./mocks/ERC20Token.sol";
+import {ERC20, ERC20Permit, ERC20Token} from "./mocks/ERC20Token.sol";
 
-contract Test7702Test is Test {
+contract ExampleScenarios is Test {
     address bob;
 
     address candid;
@@ -70,6 +70,7 @@ contract Test7702Test is Test {
 
     // 2. An attacker tries to set unlimited allowance to steal in a later transaction
     // ✅ TokenSaver protects from allowances set to a higher value than it was before tx
+    // !Only works for tracked tokens!
     function test_increasedAllowanceShouldRevert() public {
         vm.signAndAttachDelegation(address(tokenSaver), candidPK);
         vm.startPrank(candid);
@@ -93,7 +94,6 @@ contract Test7702Test is Test {
         TokenSaver(candid).execute(calls);
 
         // But a transaction to approve more than expected should fail
-        // !Only checks tracked tokens!
         calls = new TokenSaver.Call[](1);
         calls[0] =
             TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 1 ether))});
@@ -102,5 +102,52 @@ contract Test7702Test is Test {
             abi.encodeWithSelector(TokenSaver.AllowanceAboveBeforeTransaction.selector, address(DAI), bob, 0, 1 ether)
         );
         TokenSaver(candid).execute(calls);
+    }
+
+    // 3. An attacker tries to call permit
+    // ✅ TokenSaver allows to automatically revert on permit calls, if the parameter is set
+    // !Only works for tracked tokens!
+    function test_permitShouldNotWorkIfUnauthorized() public {
+        vm.signAndAttachDelegation(address(tokenSaver), candidPK);
+        vm.startPrank(candid);
+
+        TokenSaver(candid).addOrUpdateTokenTracked(address(DAI), 10 ether);
+        TokenSaver(candid).setRevertOnPermit(true);
+
+        // Generate permit signature
+        uint256 deadline = block.timestamp + 1 weeks;
+        (uint8 v, bytes32 r, bytes32 s) = _generatePermitSignature(deadline);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 0,
+            data: abi.encodeCall(ERC20Permit.permit, (candid, bob, 10 ether, deadline, v, r, s))
+        });
+
+        vm.expectRevert(TokenSaver.PermitIsNotAuthorized.selector);
+        TokenSaver(candid).execute(calls);
+    }
+
+    // Generates Candid's permit signature
+    function _generatePermitSignature(uint256 deadline) private view returns (uint8 v, bytes32 r, bytes32 s) {
+        uint256 nonce = DAI.nonces(candid);
+
+        // Create the permit hash according to EIP-2612
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                candid,
+                bob,
+                10 ether,
+                nonce,
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DAI.DOMAIN_SEPARATOR(), structHash));
+
+        // Sign the digest with the private key
+        (v, r, s) = vm.sign(candidPK, digest);
     }
 }

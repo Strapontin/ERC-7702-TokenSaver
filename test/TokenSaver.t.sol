@@ -7,7 +7,7 @@ import {TokenSaver} from "../src/TokenSaver.sol";
 
 import {ERC20, ERC20Token} from "./mocks/ERC20Token.sol";
 
-contract Test7702Test is Test {
+contract TokenSaverTest is Test {
     // Alice's address and private key (EOA with no initial contract code).
     address alice;
     uint256 alicePK;
