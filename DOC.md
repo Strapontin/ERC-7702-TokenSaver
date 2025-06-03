@@ -4,9 +4,9 @@
 
 This project was inspired from this [spoofing attack](https://drops.scamsniffer.io/transaction-simulation-spoofing-a-new-threat-in-web3/).
 
-In a world where transactions are subject to MEV, spoofing attacks, or other related thieve of funds scenarios, EOAs are not natively able to sign a transaction and **expect** the desired outcome to happen.
+In a world where transactions are subject to MEV, spoofing attacks, or other related theft of funds scenarios, EOAs are not natively able to sign a transaction and **expect** the desired outcome to happen.
 
-Since project tries to show how [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) can be used to fix such issue, where every transaction that would end with less funds than expected would revert, covering any loss.
+This project tries to show how [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) can be used to fix such issue, where every transaction that would end with less funds than expected would revert, covering any loss.
 
 # TokenSaver
 
@@ -51,3 +51,11 @@ _Note: You cannot call other functions of `TokenSaver` during `execute` for secu
 ## _But I need concrete code examples, show me real-world scenarios!_
 
 For example use-cases, visit the [`ExampleScenarios` test file](./test/ExampleScenarios.t.sol).
+
+## Security Considerations / Known Issues
+
+- A function selector matching `ERC20::approve` or `ERC20Permit::permit` may not be executable. In [Ethereum Signature Database](https://www.4byte.directory/signatures/), the other recorded functions matching selector do not look like showing a potential issue.
+
+- In `execute`, the loops to check tracked tokens balance and allowance may be very gas inefficient. This could be corrected by converting the loops in assembly code.
+
+- Since this contract uses Smart Wallet, for which storage is not reset when a new wallet is set, it could be interesting to set a new storage value for this contract variable, to avoid easy storage collision, even though this issue can probably not be entirely fixed.
