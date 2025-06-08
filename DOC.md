@@ -59,3 +59,7 @@ For example use-cases, visit the [`ExampleScenarios` test file](./test/ExampleSc
 - In `execute`, the loops to check tracked tokens balance and allowance may be very gas inefficient. This could be corrected by converting the loops in assembly code.
 
 - Since this contract uses Smart Wallet, for which storage is not reset when a new wallet is set, it could be interesting to set a new storage value for this contract variable, to avoid easy storage collision, even though this issue can probably not be entirely fixed.
+
+## Possible Features
+
+Implement this concept as a [Safe Module](https://github.com/safe-global/safe-modules)
