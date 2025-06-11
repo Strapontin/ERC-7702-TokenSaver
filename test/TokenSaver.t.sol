@@ -30,6 +30,35 @@ contract TokenSaverTest is HelperFunction {
         WETH = new ERC20Token(alice, 100e18);
     }
 
+    function test_nonEoaShouldRevert() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(bob);
+
+        // Should revert when:
+        // - Adding/updating tokens
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 50e18);
+
+        // - Removing 1 token
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver(alice).removeToken(address(DAI));
+
+        // - Deleting the array of tokens tracked
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver(alice).deleteAllTokenTracked();
+
+        // - Setting the value of revert on permit
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver(alice).setRevertOnPermit(true);
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver(alice).setRevertOnPermit(false);
+
+        // - Executing calls
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.NotSmartWalletEOA.selector, bob, alice));
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        TokenSaver(alice).execute(calls);
+    }
+
     function test_SimpleTransfer() public {
         vm.signAndAttachDelegation(address(tokenSaver), alicePK);
         vm.startPrank(alice);
@@ -197,12 +226,38 @@ contract TokenSaverTest is HelperFunction {
         });
         // Second call reduces it to 10 more ether than it should.
         // This call should not take the max allowance from call 1 as a previous value
-        calls[0] =
+        calls[1] =
             TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 60 ether))});
 
         vm.expectRevert(
-            abi.encodeWithSelector(TokenSaver.AllowanceAboveBeforeTransaction.selector, address(DAI), bob, 50 ether, 60 ether)
+            abi.encodeWithSelector(
+                TokenSaver.AllowanceAboveBeforeTransaction.selector, address(DAI), bob, 50 ether, 60 ether
+            )
         );
+        TokenSaver(alice).execute(calls);
+    }
+
+    function test_approveAndPermitWorkForTokensNotTracked() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        // Generate permit signature
+        uint256 deadline = block.timestamp + 1 weeks;
+        (uint8 v, bytes32 r, bytes32 s) = generatePermitSignature(alicePK, DAI, alice, bob, 10 ether, deadline);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
+
+        // permit
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 0,
+            data: abi.encodeCall(ERC20Permit.permit, (alice, bob, 10 ether, deadline, v, r, s))
+        });
+
+        // allowance
+        calls[1] =
+            TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 60 ether))});
+
         TokenSaver(alice).execute(calls);
     }
 }
