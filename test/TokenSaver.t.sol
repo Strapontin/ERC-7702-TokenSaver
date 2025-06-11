@@ -160,7 +160,7 @@ contract TokenSaverTest is HelperFunction {
         uint256 deadline = block.timestamp + 1 weeks;
         (uint8 v, bytes32 r, bytes32 s) = generatePermitSignature(alicePK, DAI, alice, bob, 10 ether, deadline);
 
-        TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
         calls[0] = TokenSaver.Call({
             to: address(DAI),
             value: 0,
@@ -173,6 +173,36 @@ contract TokenSaverTest is HelperFunction {
         // permit should not work if revert is set
         TokenSaver(alice).setRevertOnPermit(true);
         vm.expectRevert(TokenSaver.PermitIsNotAuthorized.selector);
+        TokenSaver(alice).execute(calls);
+    }
+
+    // An allowance set to a high number during calls, then to another value
+    //  should not trick the system into thinking the original allowance was high
+    function test_tokenAllowanceSetMultipleTimeShouldStillVerifyBeforeTx() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        // Set allowance before calls
+        DAI.approve(bob, 50 ether);
+
+        // The value tracked is not important, the token just needs to be tracked
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 0);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
+        // First call increases allowance to max
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 0,
+            data: abi.encodeCall(ERC20.approve, (address(bob), type(uint256).max))
+        });
+        // Second call reduces it to 10 more ether than it should.
+        // This call should not take the max allowance from call 1 as a previous value
+        calls[0] =
+            TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 60 ether))});
+
+        vm.expectRevert(
+            abi.encodeWithSelector(TokenSaver.AllowanceAboveBeforeTransaction.selector, address(DAI), bob, 50 ether, 60 ether)
+        );
         TokenSaver(alice).execute(calls);
     }
 }
