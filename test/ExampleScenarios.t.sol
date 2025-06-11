@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
+import {HelperFunction} from "./helpers/HelperFunction.sol";
 
 import {MaliciousContract} from "./mocks/MaliciousContract.sol";
 import {Staking} from "./mocks/Staking.sol";
 import {ERC20, ERC20Permit, ERC20Token} from "./mocks/ERC20Token.sol";
 
-contract ExampleScenarios is Test {
+contract ExampleScenarios is HelperFunction {
     address bob;
 
     address candid;
@@ -157,7 +158,7 @@ contract ExampleScenarios is Test {
 
         // Generate permit signature
         uint256 deadline = block.timestamp + 1 weeks;
-        (uint8 v, bytes32 r, bytes32 s) = _generatePermitSignature(deadline);
+        (uint8 v, bytes32 r, bytes32 s) = generatePermitSignature(candidPK, DAI, candid, bob, 10 ether, deadline);
 
         TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
         calls[0] = TokenSaver.Call({
@@ -168,27 +169,5 @@ contract ExampleScenarios is Test {
 
         vm.expectRevert(TokenSaver.PermitIsNotAuthorized.selector);
         TokenSaver(candid).execute(calls);
-    }
-
-    // Generates Candid's permit signature
-    function _generatePermitSignature(uint256 deadline) private view returns (uint8 v, bytes32 r, bytes32 s) {
-        uint256 nonce = DAI.nonces(candid);
-
-        // Create the permit hash according to EIP-2612
-        bytes32 structHash = keccak256(
-            abi.encode(
-                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
-                candid,
-                bob,
-                10 ether,
-                nonce,
-                deadline
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DAI.DOMAIN_SEPARATOR(), structHash));
-
-        // Sign the digest with the private key
-        (v, r, s) = vm.sign(candidPK, digest);
     }
 }

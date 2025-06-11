@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console2} from "forge-std/Test.sol";
-import {Vm} from "forge-std/Vm.sol";
+import {console2} from "forge-std/Test.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
 import {TokenSaverTestHelper} from "./mocks/TokenSaverTestHelper.sol";
+import {HelperFunction} from "./helpers/HelperFunction.sol";
 
-import {ERC20, ERC20Token} from "./mocks/ERC20Token.sol";
+import {ERC20, ERC20Permit, ERC20Token} from "./mocks/ERC20Token.sol";
 
-contract TokenSaverTest is Test {
+contract TokenSaverTest is HelperFunction {
     // Alice's address and private key (EOA with no initial contract code).
     address alice;
     uint256 alicePK;
@@ -148,5 +148,31 @@ contract TokenSaverTest is Test {
         TokenSaver(alice).deleteAllTokenTracked();
 
         assertEq(TokenSaverTestHelper(alice).getTokensTrackedLength(), 0);
+    }
+
+    function test_permitShouldFailIfRevertIsSet() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 50e18);
+
+        // Generate permit signature
+        uint256 deadline = block.timestamp + 1 weeks;
+        (uint8 v, bytes32 r, bytes32 s) = generatePermitSignature(alicePK, DAI, alice, bob, 10 ether, deadline);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](2);
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 0,
+            data: abi.encodeCall(ERC20Permit.permit, (alice, bob, 10 ether, deadline, v, r, s))
+        });
+
+        // permit should work if revert is not set
+        TokenSaver(alice).execute(calls);
+
+        // permit should not work if revert is set
+        TokenSaver(alice).setRevertOnPermit(true);
+        vm.expectRevert(TokenSaver.PermitIsNotAuthorized.selector);
+        TokenSaver(alice).execute(calls);
     }
 }
