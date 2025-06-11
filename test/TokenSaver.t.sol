@@ -260,4 +260,44 @@ contract TokenSaverTest is HelperFunction {
 
         TokenSaver(alice).execute(calls);
     }
+
+    function test_failCallShouldRevert() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 1 ether, // Should trigger revert
+            data: abi.encodeCall(ERC20.transfer, (bob, DAI.balanceOf(alice)))
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.CallUnsuccessful.selector, 0));
+        TokenSaver(alice).execute(calls);
+    }
+
+    function test_coveringStatementsForTestCoverage() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        WETH.approve(bob, 50 ether);
+        DAI.approve(bob, 50 ether);
+
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 0);
+        TokenSaver(alice).addOrUpdateTokenTracked(address(WETH), 0);
+
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](3);
+        calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 0))});
+        calls[1] = TokenSaver.Call({
+            to: address(WETH),
+            value: 0,
+            data: abi.encodeCall(ERC20.approve, (address(bob), 100 ether))
+        });
+        calls[2] =
+            TokenSaver.Call({to: address(WETH), value: 0, data: abi.encodeCall(ERC20.approve, (address(bob), 0))});
+
+        TokenSaver(alice).execute(calls);
+
+        TokenSaver(alice).removeToken(address(WETH));
+    }
 }
