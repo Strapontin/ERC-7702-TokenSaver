@@ -29,7 +29,7 @@ contract TokenSaver is ReentrancyGuard {
     bytes4 public constant APPROVE_SELECTOR = IERC20.approve.selector;
     bytes4 public constant PERMIT_SELECTOR = ERC20Permit.permit.selector;
 
-    TokenTracked[] tokenTracked;
+    TokenTracked[] public tokensTracked;
     bool revertOnPermit;
 
     modifier onlyEOA() {
@@ -53,14 +53,14 @@ contract TokenSaver is ReentrancyGuard {
      */
     function addOrUpdateTokenTracked(address _token, uint256 _minAmount) external onlyEOA nonReentrant {
         // Update the token if found
-        for (uint256 i = 0; i < tokenTracked.length; i++) {
-            if (tokenTracked[i].token == _token) {
-                tokenTracked[i].minAmount = _minAmount;
+        for (uint256 i = 0; i < tokensTracked.length; i++) {
+            if (tokensTracked[i].token == _token) {
+                tokensTracked[i].minAmount = _minAmount;
                 return;
             }
         }
 
-        tokenTracked.push(TokenTracked({token: _token, minAmount: _minAmount}));
+        tokensTracked.push(TokenTracked({token: _token, minAmount: _minAmount}));
     }
 
     /**
@@ -68,12 +68,12 @@ contract TokenSaver is ReentrancyGuard {
      * @param _token The address of the token to remove. Use address(0) for native token.
      */
     function removeToken(address _token) external onlyEOA nonReentrant {
-        uint256 listLength = tokenTracked.length;
+        uint256 listLength = tokensTracked.length;
 
         for (uint256 i = 0; i < listLength; i++) {
-            if (tokenTracked[i].token == _token) {
-                tokenTracked[i] = tokenTracked[listLength - 1];
-                tokenTracked.pop();
+            if (tokensTracked[i].token == _token) {
+                tokensTracked[i] = tokensTracked[listLength - 1];
+                tokensTracked.pop();
                 return;
             }
         }
@@ -84,7 +84,7 @@ contract TokenSaver is ReentrancyGuard {
      * @dev Useful for clearing token tracking state when migrating from a previous smart wallet
      */
     function deleteAllTokenTracked() external onlyEOA nonReentrant {
-        delete tokenTracked;
+        delete tokensTracked;
     }
 
     /**
@@ -102,15 +102,15 @@ contract TokenSaver is ReentrancyGuard {
      * @param calls An array of Call structs containing the details of each call to execute.
      */
     function execute(Call[] calldata calls) external onlyEOA nonReentrant {
-        TokenTracked[] memory _tokenTracked = new TokenTracked[](tokenTracked.length);
-        AllowancesTracked[] memory _allowanceTracked = new AllowancesTracked[](tokenTracked.length);
+        TokenTracked[] memory _tokenTracked = new TokenTracked[](tokensTracked.length);
+        AllowancesTracked[] memory _allowanceTracked = new AllowancesTracked[](tokensTracked.length);
         uint256 allowanceLength;
 
         // Checks the value of tokens with minAmount == uint.max
-        for (uint256 i = 0; i < tokenTracked.length; i++) {
-            _tokenTracked[i] = tokenTracked[i];
+        for (uint256 i = 0; i < tokensTracked.length; i++) {
+            _tokenTracked[i] = tokensTracked[i];
 
-            if (tokenTracked[i].minAmount == type(uint256).max) {
+            if (tokensTracked[i].minAmount == type(uint256).max) {
                 _tokenTracked[i].minAmount = _getTokenValue(_tokenTracked[i].token);
             }
         }
@@ -152,7 +152,7 @@ contract TokenSaver is ReentrancyGuard {
             uint256 value = _getTokenValue(_tokenTracked[i].token);
 
             if (value < _tokenTracked[i].minAmount) {
-                revert BalanceBelowMinimum(_tokenTracked[i].token, tokenTracked[i].minAmount, value);
+                revert BalanceBelowMinimum(_tokenTracked[i].token, tokensTracked[i].minAmount, value);
             }
         }
 
@@ -175,8 +175,8 @@ contract TokenSaver is ReentrancyGuard {
      * @return bool Returns `true` if the token is being tracked, otherwise `false`.
      */
     function _isTokenTracked(address token) private view returns (bool) {
-        for (uint256 i = 0; i < tokenTracked.length; i++) {
-            if (tokenTracked[i].token == token) return true;
+        for (uint256 i = 0; i < tokensTracked.length; i++) {
+            if (tokensTracked[i].token == token) return true;
         }
         return false;
     }

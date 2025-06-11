@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {TokenSaver} from "../src/TokenSaver.sol";
+import {TokenSaverTestHelper} from "./mocks/TokenSaverTestHelper.sol";
 
 import {ERC20, ERC20Token} from "./mocks/ERC20Token.sol";
 
@@ -17,13 +18,13 @@ contract TokenSaverTest is Test {
     ERC20Token WETH;
 
     // The contract that Alice will delegate execution to.
-    TokenSaver public tokenSaver;
+    TokenSaverTestHelper public tokenSaver;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("alice");
         bob = makeAddr("bob");
 
-        tokenSaver = new TokenSaver();
+        tokenSaver = new TokenSaverTestHelper();
 
         DAI = new ERC20Token(alice, 100e18);
         WETH = new ERC20Token(alice, 100e18);
@@ -93,5 +94,59 @@ contract TokenSaverTest is Test {
         TokenSaver(alice).execute(calls);
 
         vm.stopPrank();
+    }
+
+    function test_updateExistingToken() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        // First add the token with initial minimum
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 50e18);
+
+        // Then update it with a new minimum
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 75e18);
+
+        // Try to transfer more than allowed
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        calls[0] = TokenSaver.Call({to: address(DAI), value: 0, data: abi.encodeCall(ERC20.transfer, (bob, 30e18))});
+
+        // Should revert since balance would go below new minimum
+        vm.expectRevert(abi.encodeWithSelector(TokenSaver.BalanceBelowMinimum.selector, address(DAI), 75e18, 70e18));
+        TokenSaver(alice).execute(calls);
+
+        vm.stopPrank();
+    }
+
+    function test_removeToken() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        // Add a token, then remove it
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 50e18);
+        TokenSaver(alice).removeToken(address(DAI));
+
+        // Try to transfer everything
+        TokenSaver.Call[] memory calls = new TokenSaver.Call[](1);
+        calls[0] = TokenSaver.Call({
+            to: address(DAI),
+            value: 0,
+            data: abi.encodeCall(ERC20.transfer, (bob, DAI.balanceOf(alice)))
+        });
+
+        TokenSaver(alice).execute(calls);
+
+        assertEq(DAI.balanceOf(alice), 0);
+    }
+
+    function test_deleteAllTokensTracked() public {
+        vm.signAndAttachDelegation(address(tokenSaver), alicePK);
+        vm.startPrank(alice);
+
+        // Add a token, then remove it
+        TokenSaver(alice).addOrUpdateTokenTracked(address(DAI), 50e18);
+        TokenSaver(alice).addOrUpdateTokenTracked(address(WETH), 50e18);
+        TokenSaver(alice).deleteAllTokenTracked();
+
+        assertEq(TokenSaverTestHelper(alice).getTokensTrackedLength(), 0);
     }
 }
