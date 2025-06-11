@@ -1,3 +1,5 @@
+![image](https://github.com/user-attachments/assets/23a05b6b-d8ea-4cbc-920d-67b41a374e76)
+
 # ERC-7702-TokenSaver
 
 The contract [`TokenSaver`](./src/TokenSaver.sol) shows an example of how smart wallet could be used to avoid any loss by front-running, or running a transaction to a malicious contract. 
